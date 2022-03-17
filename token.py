@@ -1,51 +1,58 @@
 from enum import Enum
-from typing import Any, Callable, Union
+from typing import Any, Callable, Optional
 
 class Tt(Enum):
-    LET          = 0
-    VAR          = 1
-    SET          = 2
-    USE          = 3
-    DO           = 4
-    END          = 5
-    THEN         = 6
-    AND          = 7
-    OR           = 8
-    XOR          = 9
-    NOT          = 10
-    IF           = 11
-    ELSE         = 12
-    FOR          = 13
-    ALL          = 14
-    ANY          = 15
-    IN           = 16
-    LPAREN       = 17
-    RPAREN       = 18
-    PLUS         = 19
-    MINUS        = 20
-    STAR         = 21
-    SLASH        = 22
-    STAR_STAR    = 23
-    EQUALS       = 24
-    SLASH_EQUALS = 25
-    NAME         = 26
-    NUMBER       = 28
-    STRING       = 29
+    LET            = 0
+    VAR            = 1
+    SET            = 2
+    USE            = 3
+    DO             = 4
+    END            = 5
+    THEN           = 6
+    AND            = 7
+    OR             = 8
+    XOR            = 9
+    NOT            = 10
+    IF             = 11
+    ELSE           = 12
+    FOR            = 13
+    ALL            = 14
+    ANY            = 15
+    IN             = 16
+    LPAREN         = 17
+    RPAREN         = 18
+    PLUS           = 19
+    MINUS          = 20
+    STAR           = 21
+    SLASH          = 22
+    STAR_STAR      = 23
+    EQUALS         = 24
+    SLASH_EQUALS   = 25
+    GREATER        = 26
+    GREATER_EQUALS = 27
+    LESS           = 28
+    LESS_EQUALS    = 29
+    MINUS_ARROW    = 30
+    NAME           = 31
+    NUMBER         = 32
+    STRING         = 33
 
 def is_id(c: str) -> bool:
     return c.isalpha() or c.isnumeric() or c == '\'' or c == '_'
 
 def is_id_start(c: str) -> bool:
-    return c.isalpha() or c == '_'
+    return c.isalpha() or c == '_' or c =='\''
 
 def is_num(c: str) -> bool:
     return c.isdecimal() or c == '_' or c == '\''
 
 
 class Token:
-    def __init__(self, type: Tt, lit: str = "", val: Any = None) -> None:
+    def __init__(self, type: Tt, start: int, end: int, lit: str = "", val: Any = None) -> None:
         self.type = type
         self.lit = lit
+        self.start = start
+        self.end = end
         self.val = val
 
     def __str__(self) -> str:
@@ -68,6 +75,11 @@ class Lexer:
     class State:
         START    = 0
         FOR_QUAL = 1
+        ESCAPE   = 2
+
+    class Error(Exception):
+        def __init__(self, msg) -> None:
+            self.msg = msg
 
     def __init__(self, src: str) -> None:
         self.src = src
@@ -103,12 +115,12 @@ class Lexer:
             case "in",   _: return Tt.IN
         return Tt.NAME
     
-    def at(self) -> Union[str, None]:
+    def at(self) -> Optional[str]:
         if self.done:
             return None
         return self.src[self.curr]
 
-    def next(self) -> Union[str, None]:
+    def next(self) -> Optional[str]:
         if self.curr >= len(self.src) - 1 or self.done:
             self.curr += 1 # Ensure we get the last character
             self.done = True
@@ -118,13 +130,19 @@ class Lexer:
         c = self.src[self.curr]
         return c
 
+    def peek(self) -> Optional[str]:
+        if self.curr >= len(self.src) - 1 or self.done:
+            return None
+        return self.src[self.curr + 1]
+
     def sub(self) -> str:
         return self.src[self.start:self.curr]
     
     def consume(self, type: Tt, val: Any = None) -> Token:
         lit = self.sub()
+        start = self.start
         self.start = self.curr
-        return Token(type, lit)
+        return Token(type, start, self.curr, lit, val)
     
     def move_while(self, f: Callable[[str], bool]):
         c = self.at()
@@ -147,3 +165,97 @@ class Lexer:
     def number(self) -> Token:
         self.move_while(is_num)
         return self.consume(Tt.NUMBER, int(self.sub()))
+
+    def string(self) -> Token:
+        c = self.next()
+        val = ""
+        while not self.done:
+            if self.state != Lexer.State.ESCAPE:
+                if c == '"':
+                    break
+                if c == '\\':
+                    self.state = Lexer.State.ESCAPE
+                    c = self.next()
+                    continue
+            else:
+                self.state = Lexer.State.START
+                match c:
+                    case 'n':  val += '\n'
+                    case 'r':  val += '\r'
+                    case c:    val += c
+                c = self.next()
+                continue
+
+            val += c
+            c = self.next()
+        
+        # Consume the final "
+        self.next()
+        return self.consume(Tt.STRING, val)
+
+    def lex(self) -> list[Token]:
+        res = []
+        while not self.done:
+            self.skip_ws()
+            c = self.at()
+            if c is None:
+                break
+
+            if is_id_start(c):
+                res.append(self.ident())
+                continue
+            if is_num(c):
+                res.append(self.number())
+                continue
+            if c == '"':
+                res.append(self.string())
+                continue
+
+            tt: Tt
+            match c:
+                case '(': tt = Tt.LPAREN
+                case ')': tt = Tt.RPAREN
+                case '+': tt = Tt.PLUS
+                case '-':
+                    tt = Tt.MINUS
+                    if self.peek() == '>':
+                        self.next()
+                        tt = Tt.MINUS_ARROW
+                case '*':
+                    tt = Tt.STAR
+                    if self.peek() == '*':
+                        self.next()
+                        tt = Tt.STAR_STAR
+                case '/':
+                    tt = Tt.SLASH
+                    if self.peek() == '=':
+                        self.next()
+                        tt = Tt.SLASH_EQUALS
+                case '=': tt = Tt.EQUALS
+                case '>':
+                    tt = Tt.GREATER
+                    if self.peek() == '=':
+                        self.next()
+                        tt = Tt.GREATER_EQUALS
+                case '<':
+                    tt = Tt.LESS
+                    if self.peek() == '=':
+                        self.next()
+                        tt = Tt.LESS_EQUALS
+                case c:
+                    raise Lexer.Error(f"unexpected character {repr(c)}")
+            self.next()
+            res.append(self.consume(tt))
+        return res
+
+if __name__ == "__main__":
+    print("exit with Ctrl+D")
+
+    while True:
+        try:
+            src = input("lex> ")
+            l = Lexer(src)
+            print(l.lex())
+        except EOFError:
+            print()
+            break
