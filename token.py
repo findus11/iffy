@@ -1,5 +1,6 @@
 from enum import Enum
 from typing import Any, Callable, Optional
+from span import Span
 
 class Tt(Enum):
     LET            = 0
@@ -46,13 +47,11 @@ def is_id_start(c: str) -> bool:
 def is_num(c: str) -> bool:
     return c.isdecimal() or c == '_' or c == '\''
 
-
 class Token:
-    def __init__(self, type: Tt, start: int, end: int, lit: str = "", val: Any = None) -> None:
+    def __init__(self, type: Tt, span, lit: str = "", val: Any = None) -> None:
         self.type = type
         self.lit = lit
-        self.start = start
-        self.end = end
+        self.span = span
         self.val = val
 
     def __str__(self) -> str:
@@ -140,9 +139,9 @@ class Lexer:
     
     def consume(self, type: Tt, val: Any = None) -> Token:
         lit = self.sub()
-        start = self.start
+        span = Span(self.start, self.curr)
         self.start = self.curr
-        return Token(type, start, self.curr, lit, val)
+        return Token(type, span, lit, val)
     
     def move_while(self, f: Callable[[str], bool]):
         c = self.at()
