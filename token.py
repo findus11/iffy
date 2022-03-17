@@ -99,8 +99,9 @@ class Lexer:
                 return Tt.ALL
             case "any",  Lexer.State.FOR_QUAL:
                 self.state = Lexer.State.START
-                return Tt.ALL
-            case "in",   _: return Tt.ALL
+                return Tt.ANY
+            case "in",   _: return Tt.IN
+        return Tt.NAME
     
     def at(self) -> Union[str, None]:
         if self.done:
@@ -141,7 +142,7 @@ class Lexer:
     
     def ident(self) -> Token:
         self.move_while(is_id)
-        return self.consume(Tt.NAME)
+        return self.consume(self.id_type(self.sub()))
     
     def number(self) -> Token:
         self.move_while(is_num)
