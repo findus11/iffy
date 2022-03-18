@@ -1,1 +1,1 @@
-[ ] extensible lexer (Dict[String, Token])
+[x] extensible lexer (Dict[String, Token])
